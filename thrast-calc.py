@@ -1,7 +1,8 @@
+
 # coding: utf_8
 # water rocket thrust calcuration
-# Date: 2017-05-12
-# Version: 0.1
+# Date: 2018-04-29
+# Version: 0.2
 '''
    Copyright 2017 Yasubumi KANAZAWA (camelinsect@wings2fly.jp)
 
@@ -22,12 +23,14 @@ import math
 import sys
 
 #----- 設定 -----
-St = (7.7/2)**2*math.pi/1000.0**2 #ノズル出口断面積[m^2]
-dt = 0.05 #時間ステップ[s]
+St = (9.5/2)**2*math.pi/1000.0**2 #ノズル出口断面積[m^2]
+dt = 0.005 #時間ステップ[s]
 m=0.134 # 機体質量 [kg]
-P0 = 686000.0 # 初期タンク内圧[Pa]
-V0 = 1.000/1000 # 初期タンク内水体積(0.5L) [m^3]
+# P0 = 686000.0 # 初期タンク内圧[Pa]
+P0 = 1079000.0 #初期タンク内圧[Pa] 11kgf/cm^2
+V0 = 1.90/1000 # 初期タンク内水体積(0.5L) [m^3]
 T0 = 300.0 #初期タンク内空気温度[K]
+dLpet = 1000.0 #タンク長さ延長[mm]:
 
 #----- 定数 -----
 g=9.8 #重力加速度[m/s^2]
@@ -36,14 +39,18 @@ gamma = 1.4 #比熱比
 rho = 1000.0 #水密度 [kg/m^3]
 
 #----- ペットボトル関連 -----
-Xpet = [65.0,187.0,200.0,240.0,280.0,306.0] # ペットボトル形状が変化する位置(ボトル底面からの距離)
-Vp = [0,0,0,0,0] # ペットボトルの体積
-Vp[0] = 0.0094393/1000        # Xpet[5]まで水を入れたとき…出口部
-Vp[1] = Vp[0]+0.1379391/1000  # Xpet[4]まで水を入れたとき…2次関数部
-Vp[2] = Vp[1]+0.2546366/1000  # Xpet[3]まで水を入れたとき…拡大部
-Vp[3] = Vp[2]+0.0864325/1000  # Xpet[2]まで水を入れたとき…縮小部
-Vp[4] = Vp[3]+0.7761305/1000  # Xpet[1]まで水を入れたとき…円筒部（ここまでを水を入れる許容量とする）
-Vpet = Vp[4]+0.3602150/1000   # Xpet[0]まで水を入れたとき…ペットボトル全体の体積
+Xpet = [65.0,245.0+dLpet,275.0+dLpet,301.0+dLpet] # ペットボトル形状が変化する位置(ボトル底面からの距離)
+Vp = [0,0,0] # ペットボトルの体積
+Vp[0] = 0.0094393/1000        # Xpet[3]まで水を入れたとき…出口部
+Vp[1] = Vp[0]+1.0/3.0*math.pi*(0.01075**2+0.01075*0.088/2+(0.088/2)**2)*0.030  # Xpet[2]まで水を入れたとき…徐変部
+Vp[2] = Vp[1]+(0.088/2)**2*math.pi*(Xpet[1]-Xpet[0])/1000  # Xpet[2]まで水を入れたとき…円筒部
+Vpet = Vp[2]+0.3602150/1000   # Xpet[0]まで水を入れたとき…ペットボトル全体の体積
+
+apet=[0,0,0,0]
+apet[0]=((0.044-0.01075)/0.030)**2
+apet[1]=3*0.01075*apet[0]
+apet[2]=3*0.01075**2
+apet[3]=-3/math.pi
 
 #ペットボトル内の水量から水面位置を求める
 def calc_x(V):
@@ -53,54 +60,30 @@ def calc_x(V):
     if V>Vpet:
         print "ペットボトル容量オーバー"
         return -1
-    elif V>Vp[4]:
+    elif V>Vp[2]:
         print "水量制限オーバー"
         return -1
-    elif V>Vp[3]:
-        #print "円筒部"
-        dV=V-Vp[3]
-        dx=dV/(0.045**2*math.pi)
-        x=0.187-dx
-    elif V>Vp[2]:
-        #print "拡大部"
-        dV=V-Vp[2]
-        dx=0.007
-        while True:
-            dx1 = dx -(0.024785741*dx**3-0.022716131*dx**2+0.006939778*dx-dV)/(0.074357223*dx**2-0.045432263*dx+0.006939778)
-            if abs(dx1-dx) < 0.0000001:
-                dx=dx1
-                break
-            dx=dx1
-        x=0.2-dx
     elif V>Vp[1]:
-        #print "縮小部"
+        #print "円筒部"
         dV=V-Vp[1]
-        dx=0.01
-        while True:
-            dx1 = dx -(0.010471976*dx**3+0.013508848*dx**2+0.005808805*dx-dV)/(0.031415927*dx**2+0.027017697*dx+0.005808805)
-            if abs(dx1-dx) < 0.0000001:
-                dx=dx1
-                break
-            dx=dx1
-        x=0.24-dx
+        dx=dV/(0.044**2*math.pi)
+        x=Xpet[1]/1000-dx
     elif V>Vp[0]:
-        #print "2次関数部"
+        #print "拡大部"
         dV=V-Vp[0]
-        dV=0.1379391/1000 - dV
-        dx=10
+        dx=0.001
         while True:
-            dx1 = dx -((5.667671E-05*dx**5+9.521310E-04*dx**4-4.787537E-01*dx**3-4.868640E+00*dx**2+1.852407E+03*dx)*math.pi*10**-9-dV)/((2.833836E-04*dx**4+3.808524E-03*dx**3-1.436261E+00*dx**2-9.737279E+00*dx+1.852407E+03)*math.pi*10**-9)
-            if abs(dx1-dx) < 0.0000001:
-                dx=dx1
-                break
-            dx=dx1
-        dx = dx/1000
-        x=0.24+dx
+            dx1 = dx -(apet[0]*dx**3+apet[1]*dx**2+apet[2]*dx+apet[3]*dV)/(3*apet[0]*dx**2+2*apet[1]*dx+apet[2])
+            if abs(dx1-dx) < 0.0000001: 
+                dx=dx1 
+                break 
+            dx=dx1 
+        x=Xpet[2]/1000-dx 
     elif V>0:
         #print "出口部"
         dV=V
         dx=dV/(0.01075**2*math.pi)
-        x=0.306-dx
+        x=Xpet[3]/1000-dx
     else:
         print "水体積がマイナス"
         return -1
@@ -111,39 +94,41 @@ def calc_S(x):
     S=0.0
     r=0.0
     dx=0.0
-    if x>0.306:
+    if x>Xpet[3]/1000:
         print "水面位置がボトルの外"
         return -1
     elif x<0.0:
         print "水面位置がマイナス"
         return -1
-    elif x<0.065:
+    elif x<Xpet[0]/1000:
         print "水容量オーバー"
         return -1
-    elif x<0.187:
+    elif x<Xpet[1]/1000:
         #print "円筒部"
-        r=0.045
-    elif x<0.200:
-        #print "拡大部"
-        dx=x-0.187
-        r=0.045+dx*2.0/13.0
-    elif x<0.240:
-        #print "縮小部"
-        dx=x-0.200
-        r=0.047-dx*1.0/10.0
-    elif x<0.280:
-        #print "2次関数部"
-        dx=(x-0.240)
-        r=(-0.016834*(x*1000.0)**2+7.9672*(x*1000.0)-899.45)/1000
-    elif x>=0.280:
+        r=0.044
+    elif x<Xpet[2]/1000:
+        #print "徐変部"
+        dx=x-Xpet[2]/1000
+        r=0.01075+(0.044-0.01075)/0.030*dx
+    elif x>=Xpet[2]/1000:
         #print "出口部"
         r=0.01075
     S=r**2*math.pi
     return S
 
+#----debug----
+for i in range(3):
+    print "Vp["+str(i)+"]="+str(Vp[i])
+print "Vpet"+str(Vpet)
+for i in range(4):
+    print "Xpet["+str(i)+"]="+str(Xpet[i])
+
+#----end debug----
+
 
 #----- 初期化 -----
 x0 = calc_x(V0) #初期水面位置[m]
+print "x0=" + str(x0) 
 if x0 == -1:
     print "初期水面位置エラー"
     sys.exit(-1)
@@ -194,7 +179,7 @@ print "初期タンク内温度 = "+str(T0-273.15)+"[℃]"
 print "\n"
 
 # 水噴射ステージ
-print "時間(t) 水面位置(x) 圧力(P) 噴出速度(v) 水面面積(S) ロケット質量(M) 推力(F) 水体積(V)"
+print "時間(t)[sec] 水面位置(x)[m] 圧力(P)[Pa] 噴出速度(v)[m/s] 水面面積(S)[m^2] ロケット質量(M)[kg] 推力(F)[N] 水体積(V)[L]"
 #初期(t=0)
 v=math.sqrt(2*(P-PA)/rho)
 F=rho*St*v**2
@@ -209,15 +194,14 @@ print str(V)
 t+=dt
 while True:
     V1=calc_V(V)
-    if V1<0:
-        # ここで残りの水噴射の計算を実施
-        if V>Vp[0]:
+    if V1<0: # ここで残りの水噴射の計算を実施 if V>Vp[0]:
             # 水面が出口部に達していなければエラーで終了
+        if V>Vp[0]:
             print "時間当たりの水体積変化が大きすぎます。時間の刻みを小さくしてください"
             break
         else:
             # 残りは噴出速度vを一定として排出時間とタンク内圧力変化を計算。
-            x=Xpet[5]/1000
+            x=Xpet[3]/1000
             Vair=Vpet
             P=P0*(Vair0/Vair)**gamma
             if P-PA<0.1:
