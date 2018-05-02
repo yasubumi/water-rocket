@@ -1,8 +1,8 @@
 
 # coding: utf_8
 # water rocket thrust calcuration
-# Date: 2018-04-29
-# Version: 0.2
+# Date: 2018-05-03
+# Version: 0.3
 '''
    Copyright 2017 Yasubumi KANAZAWA (camelinsect@wings2fly.jp)
 
@@ -31,12 +31,35 @@ P0 = 1079000.0 #初期タンク内圧[Pa] 11kgf/cm^2
 V0 = 1.90/1000 # 初期タンク内水体積(0.5L) [m^3]
 T0 = 300.0 #初期タンク内空気温度[K]
 dLpet = 1000.0 #タンク長さ延長[mm]:
+Cd = 0.75 # 機体の抗力係数
+A = (0.09/4)**2*math.pi #機体の断面積[m^2]
 
 #----- 定数 -----
 g=9.8 #重力加速度[m/s^2]
 PA = 101300.0 #大気圧[Pa]
 gamma = 1.4 #比熱比
 rho = 1000.0 #水密度 [kg/m^3]
+rho_air = 1.293 #空気密度[kg/m^3]
+
+#----- 変数 -----
+X0 = 0.0 #初期水面位置[m]
+S0 = 0.0 #タンク断面積[m^2]
+Vair0 = 0.0 #初期タンク内空気体積[m^3]
+t = 0.0 #時間
+P = 0.0 #タンク内圧[Pa]
+V = 0.0 #タンク内水体積[m^3]
+S = 0.0 #水面位置でのタンク断面積[m^2]
+Vair = 0.0 #タンク内空気体積[m^3]
+T = 0.0 #タンク内空気温度[K]
+v = 0.0 #水噴出速度[m/s]
+x = 0.0 #水面位置[m]
+F = 0.0 #推力[N]
+M = 0.0 #質量[kg]
+u = 0.0 #ロケット速度[m/s]
+Ft = 0.0 #力積[Nsec]
+H_tmp = 0.0 #概算到達高度[m]
+z = 0.0 #ロケット高度[m]
+
 
 #----- ペットボトル関連 -----
 Xpet = [65.0,245.0+dLpet,275.0+dLpet,301.0+dLpet] # ペットボトル形状が変化する位置(ボトル底面からの距離)
@@ -150,7 +173,7 @@ M=m+V0*rho # 全備質量
 
 #----- 関数 -----
 # Vの変数分離型 微分方程式
-def fV(V):
+def f_V(V):
     x=calc_x(V)
     S=calc_S(x)
     dVdt = St* math.sqrt(2/rho * (P0*(Vair0/(Vpet-V))**gamma -PA))
@@ -159,12 +182,51 @@ def fV(V):
 # ルンゲクッタでVを求める
 def calc_V(V):
     k=[0.0,0.0,0.0,0.0]
-    k[0] = fV(V)
-    k[1] = fV(V+dt*0.5*k[0])
-    k[2] = fV(V+dt*0.5*k[1])
-    k[3] = fV(V+dt*k[2])
+    k[0] = f_V(V)
+    k[1] = f_V(V+dt*0.5*k[0])
+    k[2] = f_V(V+dt*0.5*k[1])
+    k[3] = f_V(V+dt*k[2])
     V1 = V-dt/6.0 *(k[0]+2.0*k[1]+2.0*k[2]+k[3])
     return V1
+
+# ロケット速度uの微分方程式
+def f_u(u):
+    dudt=F/M-g-(0.5*rho_air*Cd*A)/M*u**2
+    return dudt
+
+# ルンゲクッタでuを求める
+def calc_u(u):
+    k=[0.0,0.0,0.0,0.0]
+    k[0] = f_u(u)
+    k[1] = f_u(u+dt*0.5*k[0])
+    k[2] = f_u(u+dt*0.5*k[1])
+    k[3] = f_u(u+dt*k[2])
+    u1 = u+dt/6.0 * (k[0]+2.0*k[1]+2.0*k[2]+k[3])
+    return u1
+
+# 圧力Pの式
+def f_P(V):
+    ans = 0.0
+    ans = P0*(Vair0/(Vpet-V))**gamma
+    return ans
+
+# 水の噴出速度vの式
+def f_v(V):
+    ans=0.0
+    ans=(2/rho*(f_P(V)-PA))**0.5
+    return ans
+
+# 推進力Fの式
+def f_F(V):
+    ans = 0.0
+    ans = rho*St*f_v(V)**2
+    return ans
+
+# 質量Mの式
+def f_M(V):
+    ans = 0.0
+    ans = m+rho*V
+    return ans
 
 
 #----- メインプログラム -----
@@ -179,10 +241,11 @@ print "初期タンク内温度 = "+str(T0-273.15)+"[℃]"
 print "\n"
 
 # 水噴射ステージ
-print "時間(t)[sec] 水面位置(x)[m] 圧力(P)[Pa] 噴出速度(v)[m/s] 水面面積(S)[m^2] ロケット質量(M)[kg] 推力(F)[N] 水体積(V)[L]"
+print "時間(t)[sec] 水面位置(x)[m] 圧力(P)[Pa] 噴出速度(v)[m/s] 水面面積(S)[m^2] ロケット質量(M)[kg] 推力(F)[N] 水体積(V)[L] 力積(累計)[Nsec] ロケット速度(u)[m/s] ロケット位置(z)[m]"
 #初期(t=0)
-v=math.sqrt(2*(P-PA)/rho)
-F=rho*St*v**2
+v=f_v(V)
+F=f_F(V)
+Ft=F*dt
 print str(t),
 print str(x),
 print str(P),
@@ -190,7 +253,10 @@ print str(v),
 print str(S),
 print str(M),
 print str(F),
-print str(V)
+print str(V),
+print str(Ft),
+print str(u),
+print str(z)
 t+=dt
 while True:
     V1=calc_V(V)
@@ -202,18 +268,23 @@ while True:
         else:
             # 残りは噴出速度vを一定として排出時間とタンク内圧力変化を計算。
             x=Xpet[3]/1000
-            Vair=Vpet
-            P=P0*(Vair0/Vair)**gamma
+            P=f_P(0)
             if P-PA<0.1:
                 print "タンク内圧が大気圧まで下がりました。初期圧力を上げてください"
                 break
             S=calc_S(x)
             M=m
-            v=math.sqrt(2*(P-PA)/rho)
+            v=f_v(0)
             h=V/(v*St)
             t+=h
-            F=rho*St*v**2
+            F=f_F(0)
             V=0
+            Ft=Ft+F*dt
+            dt0 = dt
+            dt=h
+            u=calc_u(u)
+            z=u*dt
+            dt=dt0
             print str(t),
             print str(x),
             print str(P),
@@ -221,20 +292,27 @@ while True:
             print str(S),
             print str(M),
             print str(F),
-            print str(V)
+            print str(V),
+            print str(Ft),
+            print str(u),
+            print str(z)
             print "水噴出ステージ正常終了"
             break
     V=V1
+    u1=calc_u(u)
+    z=(u+u1)*0.5*dt
+    u=u1
     x=calc_x(V)
     Vair=Vpet-V
-    P=P0*(Vair0/Vair)**gamma
+    P=f_P(V)
     if P-PA<0.1:
         print "タンク内圧が途中で大気圧まで下がりました。初期圧を上げてください"
         break
-    v=math.sqrt(2*(P-PA)/rho)
+    v=f_v(V)
     S=calc_S(x)
-    M=m+V*rho
-    F=rho*St*v**2
+    M=f_M(V)
+    F=f_F(V)
+    Ft=Ft+F*dt
     print str(t),
     print str(x),
     print str(P),
@@ -242,6 +320,9 @@ while True:
     print str(S),
     print str(M),
     print str(F),
-    print str(V)
+    print str(V),
+    print str(Ft),
+    print str(u),
+    print str(z)
     t+=dt
 
