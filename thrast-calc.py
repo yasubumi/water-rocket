@@ -24,13 +24,12 @@ import sys
 
 #----- 設定 -----
 St = (9.5/2)**2*math.pi/1000.0**2 #ノズル出口断面積[m^2]
-dt = 0.005 #時間ステップ[s]
+dt = 0.001 #時間ステップ[s]
 m=0.134 # 機体質量 [kg]
-# P0 = 686000.0 # 初期タンク内圧[Pa]
-P0 = 1079000.0 #初期タンク内圧[Pa] 11kgf/cm^2
-V0 = 1.90/1000 # 初期タンク内水体積(0.5L) [m^3]
+P0 = 686000.0 # 初期タンク内圧[Pa] (7kgf/cm^2 = 100 PSI)
+V0 = 0.670/1000 # 初期タンク内水体積(0.5L) [m^3]
 T0 = 300.0 #初期タンク内空気温度[K]
-dLpet = 1000.0 #タンク長さ延長[mm]:
+dLpet = 200.0 #タンク長さ延長[mm]:
 Cd = 0.75 # 機体の抗力係数
 A = (0.09/4)**2*math.pi #機体の断面積[m^2]
 
@@ -180,29 +179,30 @@ def f_V(V):
     return dVdt
 
 # ルンゲクッタでVを求める
-def calc_V(V):
-    k=[0.0,0.0,0.0,0.0]
-    k[0] = f_V(V)
-    k[1] = f_V(V+dt*0.5*k[0])
-    k[2] = f_V(V+dt*0.5*k[1])
-    k[3] = f_V(V+dt*k[2])
-    V1 = V-dt/6.0 *(k[0]+2.0*k[1]+2.0*k[2]+k[3])
-    return V1
+def calc_Vu(V,u):
+    k0=[0.0,0.0,0.0,0.0]
+    k1=[0.0,0.0,0.0,0.0]
+
+    k0[0] = f_V(V)
+    k1[0] = f_u(V,u)
+
+    k0[1] = f_V(V+dt*0.5*k0[0])
+    k1[1] = f_u(V+dt*0.5*k0[0], u+dt*0.5*k1[0])
+
+    k0[2] = f_V(V+dt*0.5*k0[1])
+    k1[2] = f_u(V+dt*0.5*k0[1], u+dt*0.5*k1[1])
+
+    k0[3] = f_V(V+dt*k0[2])
+    k1[3] = f_u(V+dt*k0[2], u+dt*0.5*k1[2])
+
+    V1 = V-dt/6.0 *(k0[0]+2.0*k0[1]+2.0*k0[2]+k0[3])
+    u1 = u+dt/6.0 *(k1[0]+2.0*k1[1]+2.0*k1[2]+k1[3])
+    return V1,u1
 
 # ロケット速度uの微分方程式
-def f_u(u):
-    dudt=F/M-g-(0.5*rho_air*Cd*A)/M*u**2
+def f_u(V,u):
+    dudt=f_F(V)/f_M(V)-g-(0.5*rho_air*Cd*A)/f_M(V)*u**2
     return dudt
-
-# ルンゲクッタでuを求める
-def calc_u(u):
-    k=[0.0,0.0,0.0,0.0]
-    k[0] = f_u(u)
-    k[1] = f_u(u+dt*0.5*k[0])
-    k[2] = f_u(u+dt*0.5*k[1])
-    k[3] = f_u(u+dt*k[2])
-    u1 = u+dt/6.0 * (k[0]+2.0*k[1]+2.0*k[2]+k[3])
-    return u1
 
 # 圧力Pの式
 def f_P(V):
@@ -259,7 +259,7 @@ print str(u),
 print str(z)
 t+=dt
 while True:
-    V1=calc_V(V)
+    V1,u1=calc_Vu(V,u)
     if V1<0: # ここで残りの水噴射の計算を実施 if V>Vp[0]:
             # 水面が出口部に達していなければエラーで終了
         if V>Vp[0]:
@@ -282,8 +282,9 @@ while True:
             Ft=Ft+F*dt
             dt0 = dt
             dt=h
-            u=calc_u(u)
-            z=u*dt
+            u1 = u+(F/M-g-0.5/M*rho_air*Cd*A*u**2)*dt
+            z=z+(u+u1)*0.5*dt
+            u=u1
             dt=dt0
             print str(t),
             print str(x),
@@ -298,9 +299,8 @@ while True:
             print str(z)
             print "水噴出ステージ正常終了"
             break
+    z=z+(u+u1)*0.5*dt
     V=V1
-    u1=calc_u(u)
-    z=(u+u1)*0.5*dt
     u=u1
     x=calc_x(V)
     Vair=Vpet-V
