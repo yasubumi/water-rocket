@@ -1,8 +1,8 @@
 
 # coding: utf_8
 # water rocket thrust calcuration
-# Date: 2018-05-03
-# Version: 0.3
+# Date: 2018-05-05
+# Version: 0.4
 '''
    Copyright 2017 Yasubumi KANAZAWA (camelinsect@wings2fly.jp)
 
@@ -23,14 +23,14 @@ import math
 import sys
 
 #----- 設定 -----
-St = (9.5/2)**2*math.pi/1000.0**2 #ノズル出口断面積[m^2]
+St = (21/2)**2*math.pi/1000.0**2 #ノズル出口断面積[m^2]
 dt = 0.001 #時間ステップ[s]
-m=0.134 # 機体質量 [kg]
-P0 = 686000.0 # 初期タンク内圧[Pa] (7kgf/cm^2 = 100 PSI)
-V0 = 0.670/1000 # 初期タンク内水体積(0.5L) [m^3]
+m=0.190 # 機体質量 [kg]
+P0 = 689476.0 # 初期タンク内圧[Pa] (7kgf/cm^2 = 100 PSI)
+V0 = 0.500/1000 # 初期タンク内水体積(0.5L) [m^3]
 T0 = 300.0 #初期タンク内空気温度[K]
-dLpet = 200.0 #タンク長さ延長[mm]:
-Cd = 0.75 # 機体の抗力係数
+dLpet = 00.0 #タンク長さ延長[mm]:
+Cd = 0.85 # 機体の抗力係数
 A = (0.09/4)**2*math.pi #機体の断面積[m^2]
 
 #----- 定数 -----
@@ -137,16 +137,6 @@ def calc_S(x):
         r=0.01075
     S=r**2*math.pi
     return S
-
-#----debug----
-for i in range(3):
-    print "Vp["+str(i)+"]="+str(Vp[i])
-print "Vpet"+str(Vpet)
-for i in range(4):
-    print "Xpet["+str(i)+"]="+str(Xpet[i])
-
-#----end debug----
-
 
 #----- 初期化 -----
 x0 = calc_x(V0) #初期水面位置[m]
@@ -325,4 +315,46 @@ while True:
     print str(u),
     print str(z)
     t+=dt
+
+# 慣性飛行ステージ
+print "慣性飛行ステージ開始"
+# 初期状態保存
+t0 = t
+t = 0 # t初期化
+u0 = u
+z0 = z
+
+k = (0.5*rho_air*Cd*A/(m*g))**0.5
+C = math.atan(k*u0)
+tc = C/(k*g) # 最高点への到達時間
+
+dt = 0.1
+print "慣性飛行開始時間 t0=" + str(t0)
+print "慣性飛行開始時速度 u0=" + str(u0)
+print "慣性飛行開始時高度 z0=" + str(z0)
+print "定数√(κ/(mg)) k=" + str(k) #κ=1/2ρCdA (抗力Dの定数部)
+print "積分定数 C=" + str(C)
+print "上昇終了時間 tc=" + str(tc)
+print "空気密度 ρair=" + str(rho_air)
+print "抗力係数 Cd=" + str(Cd)
+print "ロケット断面積 A=" + str(A)
+print "ロケット乾燥質量 m=" + str(m)
+print "時間ステップ dt=" + str(dt)
+
+print "\n経過時間t[sec] ロケット速度[m/s] 到達高度[m]"
+while True:
+    if u<0.000001:
+        print "慣性飛行ステージ終了\n"
+        print "慣性飛行時間: " + str(tc) + "[sec]"
+        zmax = z0+1.0/(k**2*g)*math.log(1/abs(math.cos(k*g*tc)))
+        print "最高到達高度:" + str(zmax) + "[m]"
+        umax = u0
+        print "最高到達速度:" + str(u0) + "[m/s]"
+        break
+    t=t+dt
+    u = 1.0/k*math.tan(-k*g*t + C)
+    z = z0+1.0/(k**2*g)*math.log(abs(math.cos(k*g*(tc-t)))/abs(math.cos(k*g*tc)))
+    print str(t0+t),
+    print str(u),
+    print str(z)
 
